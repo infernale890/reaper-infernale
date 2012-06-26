@@ -1,7 +1,7 @@
 #ifndef CURLMUNACPP
 #define CURLMUNACPP
 
-#include "ServerSettings.h"
+#include "../headers/ServerSettings.h"
 
 class Curl
 {
@@ -14,7 +14,6 @@ private:
 	};
 
 	std::string Execute(ServerSettings& s, Curl::EXEC_TYPE type, std::string work, std::string path, uint32_t timeout);
-	void Execute_SLC(void* curl, Curl::EXEC_TYPE type, std::string work, std::string path, uint32_t timeout);
 	void Execute_BTC(void* curl, Curl::EXEC_TYPE type, std::string work, std::string path, uint32_t timeout);
 
 public:

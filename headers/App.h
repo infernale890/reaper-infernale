@@ -2,9 +2,9 @@
 #define APP_H
 
 #include "Curl.h"
-#include "AppOpenCL.h"
-#include "CPUMiner.h"
-
+#include "../headers/AppOpenCL.h"
+#include "../headers/CPUMiner.h"
+#include "../headers/RSHash.h"
 class App
 {
 private:
@@ -14,7 +14,6 @@ private:
 		uint32_t last_tried;
 	};
 
-	uint32_t current_server_id;
 	std::string nickbase;
 
 	Curl curl;
@@ -32,7 +31,6 @@ private:
 public:
 	void Main(std::vector<std::string> args);
 	void Parse(std::string data);
-	void LoadServers();
 };
 
 #endif

@@ -34,7 +34,7 @@ uint64_t shares_hwinvalid = 0;
 uint64_t cpu_shares_hwvalid = 0;
 uint64_t cpu_shares_hwinvalid = 0;
 clock_t current_work_time = 0;
-
+ServerSettings server;
 extern Work current_work;
 
 SHARETEST_VALUE ShareTest_BTC(uint32_t* workdata, uint32_t* target);
@@ -51,28 +51,6 @@ void SubmitShare(Curl& curl, Share& w, uint8_t* scratchbuf)
 	}
 	try
 	{ 	
-		if (globalconfs.coin.protocol == "bitcoin")
-		{
-			std::vector<uint8_t> vec = HexStringToVector("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000");
-			SHARETEST_VALUE sharevalid = ShareTest_BTC((uint32_t*)&w.data[0],(uint32_t*)&vec[0]);
-			if (sharevalid==ST_HNOTZERO && OpenCL::GetVectorSize() >= 2)
-			{
-				w.data[79]^=0x80;
-				sharevalid = ShareTest_BTC((uint32_t*)(&w.data[0]),(uint32_t*)&vec[0]);
-				if (sharevalid==ST_HNOTZERO && OpenCL::GetVectorSize() >= 4)
-				{
-					w.data[79]^=0x40;
-					sharevalid = ShareTest_BTC((uint32_t*)(&w.data[0]),(uint32_t*)&vec[0]);
-					if (sharevalid==ST_HNOTZERO)
-					{
-						w.data[79]^=0x80;
-						sharevalid = ShareTest_BTC((uint32_t*)(&w.data[0]),(uint32_t*)&vec[0]);
-					}
-				}
-			}
-		}
-		else if (globalconfs.coin.protocol == "litecoin")
-		{
 			SHARETEST_VALUE sharevalid = scanhash_scrypt(&w.data[0],scratchbuf,&w.target[0]);
 			if (sharevalid == ST_HNOTZERO)
 				shares_hwinvalid++;
@@ -83,9 +61,8 @@ void SubmitShare(Curl& curl, Share& w, uint8_t* scratchbuf)
 			}
 			else
 				shares_hwvalid++;
-		}
 		std::string str = VectorToHexString(w.data);
-		std::string ret = curl.TestWork(servers[w.server_id],str);
+		std::string ret = curl.TestWork(server,str);
 		Json::Value root;
 		Json::Reader reader;
 		bool parse_success = reader.parse(ret, root);
@@ -240,16 +217,8 @@ struct LongPollThreadParams
 	App* app;
 };
 
-#include "../headers/RSHash.h"
-
 void* LongPollThread(void* param)
 {
-	if(servers.size() != 1)
-	{
-		std::cout << "Long polling disabled when using many servers" << std::endl;
-		pthread_exit(NULL);
-		return NULL;
-	}
 	LongPollThreadParams* p = (LongPollThreadParams*)param; 
 
 	Curl* curl = p->curl;
@@ -296,7 +265,7 @@ void* LongPollThread(void* param)
 			Wait_ms(ticks-lastcall);
 		}
 		lastcall = ticks;
-		std::string r = curl->GetWork(servers[0], LP_path, 60);
+		std::string r = curl->GetWork(server, LP_path, 60);
 #ifdef _DEBUG_MSG_
 		std::cout << "Got LP" << std::endl;
 #endif
@@ -327,87 +296,64 @@ void* ShutdownThread(void* param)
 	return NULL;
 }
 
+
+
 void App::SetupCurrency()
 {
-	std::map<std::string,Coin> coins;
+	Coin c;
 	{
-		Coin c;
-		c.name = config.GetValue<std::string>("mine");
-		c.config.Load(c.name + ".conf");
-		c.protocol = c.config.GetValue<std::string>("protocol");
-		c.local_worksize = c.config.GetValue<uint32_t>("worksize");
+		c.local_worksize = config.GetValue<uint32_t>("worksize");
 		{
-			if (c.config.GetValue<std::string>("aggression") == "max")
+			if (config.GetValue<std::string>("aggression") == "max")
 			{
 				c.global_worksize = 1<<11;
 				c.max_aggression = true;
 			}
 			else
 			{
-				c.global_worksize = (1<<c.config.GetValue<uint32_t>("aggression"));
+				c.global_worksize = (1<<config.GetValue<uint32_t>("aggression"));
 				c.max_aggression = false;
 			}
 			c.global_worksize /= c.local_worksize;
 			c.global_worksize *= c.local_worksize;
 		}
-		c.threads_per_gpu = c.config.GetValue<uint32_t>("threads_per_gpu");
-		c.cputhreads = c.config.GetValue<uint32_t>("cpu_mining_threads");
-		c.cpu_algorithm = c.config.GetValue<std::string>("cpu_algorithm");
+		c.threads_per_gpu = config.GetValue<uint32_t>("threads_per_gpu");
+		c.cputhreads = config.GetValue<uint32_t>("cpu_mining_threads");
+		c.share_threads = config.GetValue<uint32_t>("sharethreads");
 
-		c.host = c.config.GetValue<std::string>("host");
-		c.port = c.config.GetValue<std::string>("port");
-		c.user = c.config.GetValue<std::string>("user");
-		c.pass = c.config.GetValue<std::string>("pass");
-		c.proxy = c.config.GetValue<std::string>("proxy");
+		c.host = config.GetValue<std::string>("host");
+		c.port = config.GetValue<std::string>("port");
+		c.user = config.GetValue<std::string>("user");
+		c.pass = config.GetValue<std::string>("pass");
+		c.proxy = config.GetValue<std::string>("proxy");
+
 		if (c.local_worksize > c.global_worksize)
 			c.global_worksize = c.local_worksize;
+	}
 
-		coins[c.name] = c;
-	}
-	std::string minedcoin = config.GetValue<std::string>("mine");
-	if (coins.find(minedcoin) == coins.end())
-	{
-		std::cout << "Coin chosen for mining \"" << minedcoin << "\" not found." << std::endl;
-		throw std::string("");
-	}
-	else
-		std::cout << "I'm now mining " << minedcoin << "!" << std::endl;
-	globalconfs.coin = coins[minedcoin];
+	std::cout << "I'm now mining litecoins!" << std::endl;
+
+	globalconfs.coin = c;
 	if (globalconfs.coin.host == "" ||
 		globalconfs.coin.port == "" ||
 		globalconfs.coin.user == "" ||
 		globalconfs.coin.pass == "")
-		throw std::string("Config ") + globalconfs.coin.name + ".conf is missing one of host/port/user/pass.";
+		throw std::string("Config is missing one of host/port/user/pass.");
 
-	if (globalconfs.coin.protocol == "bitcoin")
-		globalconfs.coin.sharekhs = pow(2.0,32.0)/1000.0;
-	if (globalconfs.coin.protocol == "litecoin")
-		globalconfs.coin.sharekhs = pow(2.0,16.0)/1000.0;
-	if (globalconfs.coin.protocol == "solidcoin" || globalconfs.coin.protocol == "solidcoin3")
-		globalconfs.coin.sharekhs = pow(2.0,17.0)/1000.0;
-
+	globalconfs.coin.sharekhs = pow(2.0,16.0)/1000.0;
 	if (globalconfs.coin.cputhreads == 0 && globalconfs.coin.threads_per_gpu == 0)
 	{
 		throw std::string("No CPU or GPU mining threads.. please set either cpu_mining_threads or threads_per_gpu to something other than 0.");
 	}
+
+	server.host = globalconfs.coin.host;
+	server.port = FromString<uint16_t>(globalconfs.coin.port);
+	server.user = globalconfs.coin.user;
+	server.pass = globalconfs.coin.pass;
+	server.proxy = globalconfs.coin.proxy;
 }
 
-std::vector<ServerSettings> servers;
-void App::LoadServers()
-{
-	uint32_t servercount = globalconfs.coin.config.GetValueCount("host");
-	for(uint32_t i=0; i<servercount; ++i)
-	{
-		ServerSettings s;
-		s.host = globalconfs.coin.config.GetValue<std::string>("host",i);
-		s.port = globalconfs.coin.config.GetValue<uint16_t>("port",i);
-		s.user = globalconfs.coin.config.GetValue<std::string>("user",i);
-		s.pass = globalconfs.coin.config.GetValue<std::string>("pass",i);
-		s.proxy = globalconfs.coin.config.GetValue<std::string>("proxy",i);
-		servers.push_back(s);
-	}
-	current_server_id = 0;
-}
+
 
 void App::Main(std::vector<std::string> args)
 {
@@ -419,7 +365,7 @@ void App::Main(std::vector<std::string> args)
 	std::cout << "/||||||||||||||||||||||||\\" << std::endl;
 	std::cout << std::endl;
 
-	std::string config_name = "reaper.conf";
+	std::string config_name = "litecoin.conf";
 	if (args.size() > 2)
 	{
 		std::cout << "Please use config files to set host/port/user/pass" << std::endl;
@@ -430,7 +376,6 @@ void App::Main(std::vector<std::string> args)
 	getworks = 0;
 	config.Load(config_name);
 	SetupCurrency();
-	LoadServers();
 	Wait_ms(100);
 	nickbase = globalconfs.coin.user;
 
@@ -455,18 +400,17 @@ void App::Main(std::vector<std::string> args)
 
 	pthread_t sharethread;
 	pthread_create(&sharethread, NULL, ShareThread, &curl);
-	if (globalconfs.coin.config.GetValue<uint32_t>("sharethreads"))
+	if (globalconfs.coin.share_threads)
 	{
-		for(uint32_t i=1; i<globalconfs.coin.config.GetValue<uint32_t>("sharethreads"); ++i)
+		for(uint32_t i=1; i< globalconfs.coin.share_threads; ++i)
 			pthread_create(&sharethread, NULL, ShareThread, &curl);
 	}
 
 	opencl.Init();
 	cpuminer.Init();
-	current_server_id = (current_server_id+1)%servers.size();
-	Parse(curl.GetWork(servers[current_server_id]));
+	Parse(curl.GetWork(server));
 
-	int32_t work_update_period_ms = globalconfs.coin.config.GetValue<uint32_t>("getwork_rate");
+	int32_t work_update_period_ms = config.GetValue<uint32_t>("getwork_rate");
 
 	if (work_update_period_ms == 0)
 		work_update_period_ms = 7500;
@@ -518,8 +462,7 @@ void App::Main(std::vector<std::string> args)
 		if (getwork_now || timeclock - workupdate >= work_update_period_ms)
 		{
 			uint32_t timmii = ticker();
-			current_server_id = (current_server_id+1)%servers.size();
-			Parse(curl.GetWork(servers[current_server_id]));
+			Parse(curl.GetWork(server));
 			timmii = ticker()-timmii;
 			if (timmii > 5000)
 				std::cout << "Getwork took " << timmii/1000.0 << " s!  " << std::endl;
@@ -594,78 +537,14 @@ void App::Parse(std::string data)
 	if (data == "")
 	{
 		std::cout << humantime() << "Couldn't connect to server. ";
-		if (servers.size() > 1)
-			std::cout << "Trying next server in a few seconds... " << std::endl;
-		else
-			std::cout << "Trying again in a few seconds... " << std::endl;
+		std::cout << "Trying again in a few seconds... " << std::endl;
 
 		return;
 	}
 
-	if (globalconfs.coin.protocol == "bitcoin" || globalconfs.coin.protocol == "litecoin")
-		Parse_BTC(data);
-	if (globalconfs.coin.protocol == "solidcoin" || globalconfs.coin.protocol == "solidcoin3")
-		Parse_SLC(data);
+	Parse_BTC(data);
 }
 
-void App::Parse_SLC(std::string data)
-{
-	Json::Value root, result, error;
-	Json::Reader reader;
-	bool parsing_successful = reader.parse( data, root );
-	if (!parsing_successful)
-	{
-		goto got_error;
-	}
-
-	result = root.get("result", "null");
-	error = root.get("error", "null");
-
-	if (result.isObject())
-	{
-		Json::Value::Members members = result.getMemberNames();
-		uint32_t neededmembers=0;
-		for(Json::Value::Members::iterator it = members.begin(); it != members.end(); ++it)
-		{
-			if (*it == "data")
-				++neededmembers;
-		}
-		if (neededmembers != 1 || !result["data"].isString())
-		{
-			goto got_error;
-		}
-	
-		++getworks;
-		Work newwork;
-		newwork.data = HexStringToVector(result["data"].asString());
-		newwork.old = false;
-		newwork.time = ticker();
-		current_work_time = ticker();
-		newwork.server_id = current_server_id;
-
-		if (!targetprinted)
-		{
-			targetprinted = true;
-			std::cout << "target_share: " << result["target_share"].asString() << std::endl;
-		}
-		newwork.target_share = HexStringToVector(result["target_share"].asString().substr(2));
-		newwork.ntime_at_getwork = (*(uint64_t*)&newwork.data[76]) + 1;
-
-		current_work.time = ticker();
-		pthread_mutex_lock(&current_work_mutex);
-		current_work = newwork;
-		pthread_mutex_unlock(&current_work_mutex);
-		return;
-	}
-	else if (!error.isNull())
-	{
-		std::cout << humantime() << error.asString() << std::endl;
-		std::cout << humantime() << "Code " << error["code"].asInt() << ", \"" << error["message"].asString() << "\"" << std::endl;
-	}
-got_error:
-	std::cout << humantime() << "Error with server: " << data << std::endl;
-	return;
-}
 void Precalc_BTC(Work& work, uint32_t vectors);
 std::vector<uint8_t> CalculateMidstate(std::vector<uint8_t> in);
 void App::Parse_BTC(std::string data)
@@ -726,7 +605,7 @@ void App::Parse_BTC(std::string data)
 				newwork.target_share[4*i+2] = number>>16;
 				newwork.target_share[4*i+3] = number>>24;
 			}
-			newwork.server_id = current_server_id;
+			newwork.server_id = 0;
 		}
 
 		Precalc_BTC(newwork,opencl.GetVectorSize());
@@ -734,7 +613,6 @@ void App::Parse_BTC(std::string data)
 		pthread_mutex_lock(&current_work_mutex);
 		current_work = newwork;
 		pthread_mutex_unlock(&current_work_mutex);
-		current_server_id = (current_server_id+1)%servers.size();
 		return;
 	}
 	else if (!error.isNull())

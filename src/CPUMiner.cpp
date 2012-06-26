@@ -41,12 +41,6 @@ void CPUMiner::Init()
 #endif
 		return;
 	}
-	if (globalconfs.coin.name != "solidcoin")
-	{
-		if (globalconfs.coin.cputhreads != 0)
-			std::cout << "Only SolidCoin CPU mining is supported" << std::endl;
-		return;
-	}
 
 	std::map<std::string,void*(*)(void*)> funcs;
 	funcs["scalar"] = Reap_CPU_V1;

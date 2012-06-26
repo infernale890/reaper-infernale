@@ -44,11 +44,6 @@ void Config::Load(std::string filename, std::vector<std::string> included_alread
 	config_values["proxy"] = "string";
 	config_values["long_polling"] = "bool";
 	config_values["include"] = "string";
-	config_values["cpu_algorithm"] = "string";
-	config_values["protocol"] = "string";
-	config_values["mine"] = "string";
-	config_values["gpu_sharemask"] = "string";
-	config_values["vectors"] = "uint";
 	config_values["sharethreads"] = "uint";
 	config_values["dont_check_shares"] = "bool";
 	config_values["lookup_gap"] = "uint";
@@ -104,4 +99,5 @@ void Config::Load(std::string filename, std::vector<std::string> included_alread
 		config[prop].push_back(value);
 	}
 	included_already.pop_back();
+	filu.close();
 }

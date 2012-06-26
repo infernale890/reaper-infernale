@@ -16,16 +16,15 @@
 #include <deque>
 
 
-#include "Config.h"
+#include "../headers/Config.h"
 
 struct Coin
 {
-	std::string name;
 	std::string protocol;
-	Config config;
 	uint32_t global_worksize;
 	uint32_t local_worksize;
 	uint32_t threads_per_gpu;
+	uint32_t share_threads;
 	bool max_aggression;
 	double sharekhs;
 

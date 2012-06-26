@@ -105,12 +105,7 @@ std::string Curl::Execute(ServerSettings& s, Curl::EXEC_TYPE type, std::string w
 
 	curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, HeaderCallback);
 
-	if (globalconfs.coin.protocol == "bitcoin" || globalconfs.coin.protocol == "litecoin")
-		Execute_BTC(curl,type,work,path,timeout);
-	else if (globalconfs.coin.protocol == "solidcoin" || globalconfs.coin.protocol == "solidcoin3")
-		Execute_SLC(curl,type,work,path,timeout);
-	else
-		std::cout << "Wrong protocol type " << globalconfs.coin.protocol << "." << std::endl;
+	Execute_BTC(curl,type,work,path,timeout);
 	Quit(curl);
 	return responsedata;
 }
@@ -158,52 +153,6 @@ void Curl::Execute_BTC(void* curl, Curl::EXEC_TYPE type, std::string work, std::
 		else
 		{
 			std::cout << "Error " << code << " getting work. See http://curl.haxx.se/libcurl/c/libcurl-errors.html for error code explanations." << std::endl;
-		}
-	}
-	curl_slist_free_all(headerlist);
-}
-
-void Curl::Execute_SLC(void* curl, Curl::EXEC_TYPE type, std::string work, std::string path, uint32_t timeout)
-{
-	curl_slist* headerlist = NULL;
-	headerlist = curl_slist_append(headerlist, "Content-Type: application/json");
-	headerlist = curl_slist_append(headerlist, "Accept: application/json");
-	headerlist = curl_slist_append(headerlist, "User-Agent: reaper/" REAPER_VERSION);
-
-	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headerlist);
-
-	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, timeout);
-	
-	if (type == GETWORK_LP) 
-	{
-		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, NULL);
-		curl_easy_setopt(curl, CURLOPT_POST, 0);
-	}
-	else if (type == GETWORK)
-	{
-		curl_easy_setopt(curl, CURLOPT_POST, 1);
-		curl_easy_setopt(curl, CURLOPT_COPYPOSTFIELDS, "{\"method\":\"sc_getwork\",\"params\":[],\"id\":1}");
-	}
-	else if (type == TESTWORK)
-	{
-		curl_easy_setopt(curl, CURLOPT_POST, 1);
-		curl_easy_setopt(curl, CURLOPT_COPYPOSTFIELDS, ("{\"method\":\"sc_testwork\",\"id\":\"1\",\"params\":[\"" + work + "\"]}").c_str());
-	}
-	else
-	{
-		std::cout << "Unknown case " << (int)type << " in Curl::Execute()" << std::endl;
-	}
-
-	CURLcode code = curl_easy_perform(curl);
-	if(code != CURLE_OK)
-	{
-		if (code == CURLE_COULDNT_CONNECT)
-		{
-			std::cout << humantime() << "Could not connect. Server down?" << std::endl;
-		}
-		else
-		{
-			std::cout << humantime() << "Error " << code << " getting work. See http://curl.haxx.se/libcurl/c/libcurl-errors.html for error code explanations." << std::endl;
 		}
 	}
 	curl_slist_free_all(headerlist);

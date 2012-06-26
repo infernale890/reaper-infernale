@@ -6,7 +6,7 @@
 
 uint32_t OpenCL::GetVectorSize()
 {
-	uint32_t ret = globalconfs.coin.config.GetValue<uint32_t>("vectors");
+	uint32_t ret = config.GetValue<uint32_t>("vectors");
 	if (ret > 4)
 		ret = 4;
 	else if (ret > 2)
@@ -151,167 +151,6 @@ void PreCalc(uint8_t* in, cl_uint8& s)
 
 void v3hash(uint8_t* input, uint8_t* scratch, uint8_t* output);
 
-void* Reap_GPU_SLC(void* param)
-{
-	_clState* state = (_clState*)param;
-	state->hashes = 0;
-
-	size_t globalsize = globalconfs.coin.global_worksize;
-	size_t localsize = globalconfs.coin.local_worksize;
-
-	Work tempwork;
-
-	uint8_t tempdata[1024];
-	memset(tempdata, 0, 1024);
-
-	clEnqueueWriteBuffer(state->commandQueue, state->CLbuffer[0], true, 0, KERNEL_INPUT_SIZE, tempdata, 0, NULL, NULL);
-	clEnqueueWriteBuffer(state->commandQueue, state->CLbuffer[1], true, 0, KERNEL_OUTPUT_SIZE*sizeof(uint32_t), tempdata, 0, NULL, NULL);
-
-	uint32_t kernel_output[KERNEL_OUTPUT_SIZE] = {};
-
-	bool write_kernel_output = true;
-	bool write_kernel_input = true;
-
-	uint32_t scversion=2;
-	if (globalconfs.coin.name == "solidcoin3")
-		scversion=3;
-
-	size_t base = 0;
-	clSetKernelArg(state->kernel, 2, sizeof(cl_mem), &state->padbuffer8);
-
-	bool errorfree = true;
-	std::deque<uint32_t> runtimes;
-	while(!shutdown_now)
-	{
-		if (globalconfs.coin.max_aggression && !runtimes.empty())
-		{
-			uint32_t avg_runtime=0;
-			for(std::deque<uint32_t>::iterator it = runtimes.begin(); it != runtimes.end(); ++it)
-			{
-				avg_runtime += *it;
-			}
-			avg_runtime /= (uint32_t)runtimes.size();
-			if (avg_runtime > TARGET_RUNTIME_MS+TARGET_RUNTIME_ALLOWANCE_MS)
-			{
-				globalsize -= localsize;
-			}
-			else if (avg_runtime*3 < TARGET_RUNTIME_MS-TARGET_RUNTIME_ALLOWANCE_MS)
-			{
-				globalsize = (globalsize+globalsize/2)/localsize*localsize;
-			}
-			else if (avg_runtime < TARGET_RUNTIME_MS-TARGET_RUNTIME_ALLOWANCE_MS)
-			{
-				globalsize += localsize;
-			}
-		}
-		clock_t starttime = ticker();
-		if (current_work.old)
-		{
-			Wait_ms(20);
-			continue;
-		}
-		if (tempwork.time != current_work.time)
-		{
-			pthread_mutex_lock(&current_work_mutex);
-			tempwork = current_work;
-			pthread_mutex_unlock(&current_work_mutex);
-			memcpy(tempdata, &tempwork.data[0], 128);
-			*(uint32_t*)&tempdata[100] = state->thread_id;
-			base = 0;
-			write_kernel_input = true;
-		}
-
-		uint64_t newtime = tempwork.ntime_at_getwork + (ticker()-tempwork.time)/1000;
-		if (*(uint64_t*)&tempdata[76] != newtime)
-		{
-			*(uint64_t*)&tempdata[76] = newtime;
-			write_kernel_input = true;
-		}
-		if (write_kernel_input)
-		{
-			cl_uint8 precalc;
-			PreCalc(tempdata,precalc);
-			clEnqueueWriteBuffer(state->commandQueue, state->CLbuffer[0], true, 0, KERNEL_INPUT_SIZE, tempdata, 0, NULL, NULL);
-			clSetKernelArg(state->kernel, 3, sizeof(cl_uint8), &precalc);
-		}
-		if (write_kernel_output)
-			clEnqueueWriteBuffer(state->commandQueue, state->CLbuffer[1], true, 0, KERNEL_OUTPUT_SIZE*sizeof(uint32_t), kernel_output, 0, NULL, NULL);
-
-		clSetKernelArg(state->kernel, 0, sizeof(cl_mem), &state->CLbuffer[0]);
-		clSetKernelArg(state->kernel, 1, sizeof(cl_mem), &state->CLbuffer[1]);
-
-		cl_int returncode;
-		returncode = clEnqueueNDRangeKernel(state->commandQueue, state->kernel, 1, &base, &globalsize, &localsize, 0, NULL, NULL);
-		//OpenCL throws CL_INVALID_KERNEL_ARGS randomly, let's just ignore them.
-		if (returncode != CL_SUCCESS && returncode != CL_INVALID_KERNEL_ARGS && errorfree)
-		{
-			std::cout << humantime() << "Error " << returncode << " while trying to run OpenCL kernel" << std::endl;
-			errorfree = false;
-		}
-		else if ((returncode == CL_SUCCESS || returncode == CL_INVALID_KERNEL_ARGS) && !errorfree)
-		{
-			std::cout << humantime() << "Previous OpenCL error cleared" << std::endl;
-			errorfree = true;
-		}
-		clEnqueueReadBuffer(state->commandQueue, state->CLbuffer[1], true, 0, KERNEL_OUTPUT_SIZE*sizeof(uint32_t), kernel_output, 0, NULL, NULL);
-
-		write_kernel_input = false;
-		write_kernel_output = false;
-		for(uint32_t i=0; i<KERNEL_OUTPUT_SIZE; ++i)
-		{
-			if (!kernel_output[i])
-				continue;
-			uint32_t result = kernel_output[i];
-			uint8_t testmem[512];
-			uint8_t finalhash[32];
-
-			if (scversion == 2)
-			{
-				memcpy(testmem, tempdata, 128);
-				*((uint32_t*)&testmem[108]) = result;
-				BlockHash_1(testmem, finalhash);
-			}
-			if (finalhash[31] != 0 || finalhash[30] != 0 || finalhash[29] >= 0x80)
-				++shares_hwinvalid;
-			else
-				++shares_hwvalid;
-			bool below=true;
-			for(int32_t j=0; j<32; ++j)
-			{
-				if (finalhash[31-j] > tempwork.target_share[j])
-				{
-					below=false;
-					break;
-				}
-				if (finalhash[31-j] < tempwork.target_share[j])
-				{
-					break;
-				}
-			}
-			if (below)
-			{
-				std::vector<uint8_t> share(testmem, testmem+128);				
-				pthread_mutex_lock(&state->share_mutex);
-				state->shares_available = true;
-				state->shares.push_back(Share(share,tempwork.target_share,tempwork.server_id));
-				pthread_mutex_unlock(&state->share_mutex);
-			}
-			kernel_output[i] = 0;
-			write_kernel_output = true;
-		}
-		if (errorfree)
-		{
-			state->hashes += globalsize;
-		}
-		base += globalsize;
-		clock_t endtime = ticker();
-		runtimes.push_back(uint32_t(endtime-starttime));
-		if (runtimes.size() > RUNTIMES_SIZE)
-			runtimes.pop_front();
-	}
-	pthread_exit(NULL);
-	return NULL;
-}
 
 #endif
 
@@ -332,7 +171,6 @@ void pushvector(std::vector<uint32_t>& v, uint32_t value, uint32_t vectors)
 		v.push_back(value^0xC0000000);
 	}
 }
-
 void Precalc_BTC(Work& work, uint32_t vectors)
 {
 	uint32_t* midstate = (uint32_t*)(&work.midstate[0]);
@@ -390,6 +228,7 @@ void Precalc_BTC(Work& work, uint32_t vectors)
 	pushvector(work.precalc,E,vectors);
 	pushvector(work.precalc,W19_partial,vectors);
 }
+
 #ifndef CPU_MINING_ONLY
 
 pthread_mutex_t noncemutex = PTHREAD_MUTEX_INITIALIZER;
@@ -704,7 +543,6 @@ void OpenCL::Init()
 			sourcefilename = config.GetCombiValue<std::string>("device", device_id, "kernel");
 			if (sourcefilename == "")
 				sourcefilename = config.GetValue<std::string>("kernel");
-			sourcefilename = globalconfs.coin.protocol + "-" + sourcefilename;
 			FILE* filu = fopen(sourcefilename.c_str(), "rb");
 			if (filu == NULL)
 			{
@@ -755,15 +593,9 @@ void OpenCL::Init()
 				filebinaryname += *p;
 		}
 		filebinaryname += std::string("-") + ToString(globalconfs.coin.local_worksize);
-		if (globalconfs.coin.protocol == "litecoin")
-		{
-			filebinaryname += std::string("-") + ToString(globalconfs.coin.config.GetValue<std::string>("gpu_thread_concurrency"));
-			filebinaryname += std::string("-") + ToString(globalconfs.coin.config.GetValue<std::string>("lookup_gap"));
-		}
-		if (globalconfs.coin.protocol == "bitcoin")
-		{
-			filebinaryname += std::string("-") + ToString(globalconfs.coin.config.GetValue<std::string>("vectors"));
-		}
+		filebinaryname += std::string("-") + ToString(config.GetValue<std::string>("gpu_thread_concurrency"));
+		filebinaryname += std::string("-") + ToString(config.GetValue<std::string>("lookup_gap"));
+
 
 		filebinaryname = sourcefilename.substr(0,sourcefilename.size()-3) + REAPER_VERSION + "." + filebinaryname + ".bin";
 		if (globalconfs.save_binaries)
@@ -808,17 +640,16 @@ void OpenCL::Init()
 				compile_options += " -D AMD_GPU";
 			
 			compile_options += " -D SHAREMASK=";
-			compile_options += globalconfs.coin.config.GetValue<std::string>("gpu_sharemask");
+			compile_options += config.GetValue<std::string>("gpu_sharemask");
 			uint32_t vectors = GetVectorSize();
 			if (vectors == 2)
 				compile_options += " -D VECTORS";
 			else if (vectors == 4)
 				compile_options += " -D VECTORS4";
-			if (globalconfs.coin.protocol == "litecoin")
-			{
-				compile_options += std::string(" -D LOOKUP_GAP=") + globalconfs.coin.config.GetValue<std::string>("lookup_gap");
-				compile_options += std::string(" -D CONCURRENT_THREADS=") + globalconfs.coin.config.GetValue<std::string>("gpu_thread_concurrency");
-			}
+
+			compile_options += std::string(" -D LOOKUP_GAP=") + config.GetValue<std::string>("lookup_gap");
+			compile_options += std::string(" -D CONCURRENT_THREADS=") + config.GetValue<std::string>("gpu_thread_concurrency");
+
 			status = clBuildProgram(GPUstate.program, 1, &devices[device_id], compile_options.c_str(), NULL, NULL);
 			if(status != CL_SUCCESS) 
 			{   
@@ -886,31 +717,22 @@ void OpenCL::Init()
 			throw std::string("Error creating OpenCL kernel");
 		}
 		cl_mem padbuffer8;
-		if(globalconfs.coin.protocol == "solidcoin" || globalconfs.coin.protocol == "solidcoin3")
+
+		uint64_t lookup_gap = config.GetValue<uint64_t>("lookup_gap");
+		uint64_t thread_concurrency = config.GetValue<uint64_t>("gpu_thread_concurrency");
+		uint64_t itemsperthread = (1024/lookup_gap+(1024%lookup_gap>0));
+		uint64_t bufsize = 128*itemsperthread*thread_concurrency;
+		std::cout << "LTC buffer size: " << bufsize/1024.0/1024.0 << "MB." << std::endl;
+		padbuffer8 = clCreateBuffer(clState.context, CL_MEM_READ_WRITE, (uint32_t)bufsize, NULL, &status);
+		if (status != 0)
 		{
-			padbuffer8 = clCreateBuffer(clState.context, CL_MEM_READ_ONLY, 1024*1024*4+8, NULL, &status);
+			std::cout << "Buffer too big: allocation failed. Either raise 'lookup_gap' or lower 'gpu_thread_concurrency'." << std::endl;
+			throw std::string("");
 		}
-		else if (globalconfs.coin.protocol == "litecoin")
-		{
-			uint64_t lookup_gap = globalconfs.coin.config.GetValue<uint64_t>("lookup_gap");
-			uint64_t thread_concurrency = globalconfs.coin.config.GetValue<uint64_t>("gpu_thread_concurrency");
-			uint64_t itemsperthread = (1024/lookup_gap+(1024%lookup_gap>0));
-			uint64_t bufsize = 128*itemsperthread*thread_concurrency;
-			std::cout << "LTC buffer size: " << bufsize/1024.0/1024.0 << "MB." << std::endl;
-			padbuffer8 = clCreateBuffer(clState.context, CL_MEM_READ_WRITE, (uint32_t)bufsize, NULL, &status);
-			if (status != 0)
-			{
-				std::cout << "Buffer too big: allocation failed. Either raise 'lookup_gap' or lower 'gpu_thread_concurrency'." << std::endl;
-				throw std::string("");
-			}
-		}
+	
 		for(uint32_t thread_id = 0; thread_id < globalconfs.coin.threads_per_gpu; ++thread_id)
 		{
 			GPUstate.commandQueue = clCreateCommandQueue(clState.context, devices[device_id], 0, &status);
-			if (thread_id == 0 && (globalconfs.coin.protocol == "solidcoin" || globalconfs.coin.protocol == "solidcoin3"))
-			{
-				clEnqueueWriteBuffer(GPUstate.commandQueue, padbuffer8, true, 0, 1024*1024*4+8, BlockHash_1_MemoryPAD8, 0, NULL, NULL);
-			}
 			if(status != CL_SUCCESS)
 				throw std::string("Error creating OpenCL command queue");
 
@@ -947,12 +769,7 @@ void OpenCL::Init()
 	for(uint32_t i=0; i<GPUstates.size(); ++i)
 	{
 		std::cout << i+1 << "...";
-		if (globalconfs.coin.protocol == "bitcoin")
-			pthread_create(&GPUstates[i].thread, NULL, Reap_GPU_BTC, (void*)&GPUstates[i]);
-		else if (globalconfs.coin.protocol == "solidcoin" || globalconfs.coin.protocol == "solidcoin3")
-			pthread_create(&GPUstates[i].thread, NULL, Reap_GPU_SLC, (void*)&GPUstates[i]);
-		else if (globalconfs.coin.protocol == "litecoin")
-			pthread_create(&GPUstates[i].thread, NULL, Reap_GPU_LTC, (void*)&GPUstates[i]);
+		pthread_create(&GPUstates[i].thread, NULL, Reap_GPU_LTC, (void*)&GPUstates[i]);
 	}
 	std::cout << "done" << std::endl;
 #endif
