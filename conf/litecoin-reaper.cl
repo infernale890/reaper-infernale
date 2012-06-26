@@ -1,6 +1,6 @@
 #define rotl(x,y) rotate(x,y)	
 #define Ch(x,y,z)  bitselect(z,y,x)
-#define Maj(x,y,z) bitselect(z,y,(x^z))	// Ch((x^z),y,z)
+#define Maj(x,y,z) Ch((x^z),y,z)
 
 
 
@@ -630,27 +630,25 @@ void scrypt_core(uint4 X[8], __global uint4*restrict lookup)
 	const uint ySIZE = (1024/LOOKUP_GAP+(1024%LOOKUP_GAP>0));
 	const uint xSIZE = CONCURRENT_THREADS;
 	uint x = get_global_id(0)%xSIZE,z,i,y;
-#pragma unroll
+
 	for(y=0; y<1024/LOOKUP_GAP; ++y)
 	{
 #pragma unroll
 		for(z=0; z<8; ++z) //zsize
 			lookup[CO] = X[z];
-#pragma unroll
+
 		for(i=0; i<LOOKUP_GAP; ++i) 
 			salsa(X);
 	}
 #if (LOOKUP_GAP != 1) && (LOOKUP_GAP != 2) && (LOOKUP_GAP != 4) && (LOOKUP_GAP != 8)
 	{
-#pragma unroll
 		for(z=0; z<8; ++z)
 			lookup[CO] = X[z];
-#pragma unroll
+
 		for(i=0; i<1024%LOOKUP_GAP; ++i)
 			salsa(X); 
 	}
 #endif
-#pragma unroll
 	for (i=0; i<1024; ++i) 
 	{
 		uint4 V[8];
