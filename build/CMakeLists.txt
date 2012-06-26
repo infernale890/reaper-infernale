@@ -45,18 +45,18 @@ set(SOURCES
 )
 
 set(HEADERS 
-	../src/App.h
-	../src/AppOpenCL.h
-	../src/Blake512.h
-	../src/Config.h
-	../src/CPUAlgos.h
-	../src/CPUMiner.h
-	../src/Curl.h
-	../src/Global.h
-	../src/RSHash.h
-	../src/ServerSettings.h
-	../src/SHA256.h
-	../src/Util.h
+	../headers/App.h
+	../headers/AppOpenCL.h
+	../headers/Blake512.h
+	../headers/Config.h
+	../headers/CPUAlgos.h
+	../headers/CPUMiner.h
+	../headers/Curl.h
+	../headers/Global.h
+	../headers/RSHash.h
+	../headers/ServerSettings.h
+	../headers/SHA256.h
+	../headers/Util.h
 )
 
 ## Targets ##
