@@ -180,7 +180,7 @@ static const uint32_t outerpad[8] = {0x80000000, 0, 0, 0, 0, 0, 0, 0x00000300};
 static inline void
 PBKDF2_SHA256_80_128_init(const uint32_t *passwd, uint32_t* tstate, uint32_t* ostate)
 {
-	uint32_t ihash[8];
+	uint32_t ihash[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	uint32_t pad[16];
 	uint32_t i;
 	memcpy(pad, passwd+16, sizeof(uint32_t)*4);//memorycopy(pad, passwd+16, 16);
@@ -193,12 +193,12 @@ PBKDF2_SHA256_80_128_init(const uint32_t *passwd, uint32_t* tstate, uint32_t* os
 
 	SHA256_InitState(ostate);
 	for (i = 0; i < 16; i++)
-		pad[i] = (i < 8 ? ihash[i] : 0) ^ 0x5c5c5c5c;
+		pad[i] = ihash[i] ^ 0x5c5c5c5c;
 	SHA256_Transform(ostate, pad, 0);
 
 	SHA256_InitState(tstate);
 	for (i = 0; i < 16; i++)
-		pad[i] = (i < 8 ? ihash[i] : 0) ^ 0x36363636;
+		pad[i] = ihash[i] ^ 0x36363636;
 	SHA256_Transform(tstate, pad, 0);
 }
 
