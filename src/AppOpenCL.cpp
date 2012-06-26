@@ -564,7 +564,7 @@ void OpenCL::Init()
 			}
 		}
 
-		std::vector<uint32_t> sourcesizes;
+		std::vector<size_t> sourcesizes;
 		sourcesizes.push_back(source.length());
 
 		const char* see = source.c_str();
@@ -627,7 +627,7 @@ void OpenCL::Init()
 		if (filebinary == NULL)
 		{
 			std::cout << "Compiling kernel... this could take up to 2 minutes." << std::endl;
-			GPUstate.program = clCreateProgramWithSource(clState.context, 1, (const char**)&see, &sourcesizes[0], &status);
+			GPUstate.program = clCreateProgramWithSource(clState.context, 1, (const char**)&see,(const size_t*) &sourcesizes[0], &status);
 			if(status != CL_SUCCESS) 
 				throw std::string("Error creating OpenCL program from source");
 
