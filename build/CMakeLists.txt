@@ -26,37 +26,37 @@ configure_file(
 ## Source files ##
 
 set(SOURCES
-    App.cpp
-    AppOpenCL.cpp
-    Blake512.cpp
-    Config.cpp
-	CPUAlgos.cpp
-    CPUMiner.cpp
-    Curl.cpp
-    json_reader.cpp
-    json_value.cpp
-    json_writer.cpp
-    main.cpp
-    RSHash.cpp
-	scrypt.cpp
-    ServerSettings.cpp
-    SHA256.cpp
-    Util.cpp
+    ../src/App.cpp
+    ../src/AppOpenCL.cpp
+    ../src/Blake512.cpp
+    ../src/Config.cpp
+	../src/CPUAlgos.cpp
+    ../src/CPUMiner.cpp
+    ../src/Curl.cpp
+    ../src/json_reader.cpp
+    ../src/json_value.cpp
+    ../src/json_writer.cpp
+    ../src/main.cpp
+    ../src/RSHash.cpp
+	../src/scrypt.cpp
+    ../src/ServerSettings.cpp
+    ../src/SHA256.cpp
+    ../src/Util.cpp
 )
 
 set(HEADERS 
-	App.h
-	AppOpenCL.h
-	Blake512.h
-	Config.h
-	CPUAlgos.h
-	CPUMiner.h
-	Curl.h
-	Global.h
-	RSHash.h
-	ServerSettings.h
-	SHA256.h
-	Util.h
+	../src/App.h
+	../src/AppOpenCL.h
+	../src/Blake512.h
+	../src/Config.h
+	../src/CPUAlgos.h
+	../src/CPUMiner.h
+	../src/Curl.h
+	../src/Global.h
+	../src/RSHash.h
+	../src/ServerSettings.h
+	../src/SHA256.h
+	../src/Util.h
 )
 
 ## Targets ##

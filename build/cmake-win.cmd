@@ -30,7 +30,7 @@ xcopy ..\conf\*.cl %builddir%\Release
 xcopy ..\conf\*.conf %builddir%\Release
 xcopy ..\lib\windows\lib\%buildarch%\*.dll %builddir%\Release\
 cd %builddir%
-cmake -G "%buildgen%" -D CMAKE_LIBRARY_ARCHITECTURE=%buildarch% -D "CMAKE_PREFIX_PATH=..\lib\windows\" -D CPU_MINING_ONLY=%buildtype% ..
+cmake -G "%buildgen%" -D CMAKE_LIBRARY_ARCHITECTURE=%buildarch% -D "CMAKE_PREFIX_PATH=../lib/windows/" -D CPU_MINING_ONLY=%buildtype% ..
 cd ..
 echo.
 goto :eof
