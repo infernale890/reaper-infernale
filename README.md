@@ -1,5 +1,5 @@
 
-Reaper
+Reaper-Infernale
 ======
 
 Reaper is the first [OpenCL](http://en.wikipedia.org/wiki/Opencl) GPU  miner for

@@ -41,7 +41,7 @@ SHARETEST_VALUE ShareTest_BTC(uint32_t* workdata, uint32_t* target);
 SHARETEST_VALUE scanhash_scrypt(uint8_t *pdata, uint8_t* scratchbuf, const uint8_t *ptarget);
 
 bool getwork_now = false;
-
+bool dont_check_shares = false;
 void SubmitShare(Curl& curl, Share& w, uint8_t* scratchbuf)
 {
 	if (w.data.size()%128 != 0)
@@ -50,7 +50,9 @@ void SubmitShare(Curl& curl, Share& w, uint8_t* scratchbuf)
 		return;
 	}
 	try
-	{ 	
+	{
+		if (!dont_check_shares)
+		{
 			SHARETEST_VALUE sharevalid = scanhash_scrypt(&w.data[0],scratchbuf,&w.target[0]);
 			if (sharevalid == ST_HNOTZERO)
 				shares_hwinvalid++;
@@ -61,6 +63,7 @@ void SubmitShare(Curl& curl, Share& w, uint8_t* scratchbuf)
 			}
 			else
 				shares_hwvalid++;
+		}
 		std::string str = VectorToHexString(w.data);
 		std::string ret = curl.TestWork(server,str);
 		Json::Value root;
@@ -137,7 +140,7 @@ void* ShareThread(void* param)
 	btcpadding[44] = 0x80;
 	btcpadding[45] = 0x02;
 
-	uint8_t* scratchbuf = new uint8_t[131072];
+	uint8_t scratchbuf[131072];
 
 	while(!shutdown_now)
 	{
@@ -203,7 +206,6 @@ void* ShareThread(void* param)
 			}
 		}
 	}
-	delete[] scratchbuf;
 	pthread_exit(NULL);
 	return NULL;
 }
@@ -376,6 +378,7 @@ void App::Main(std::vector<std::string> args)
 	getworks = 0;
 	config.Load(config_name);
 	SetupCurrency();
+	dont_check_shares = config.GetValue<bool>("dont_check_shares");
 	Wait_ms(100);
 	nickbase = globalconfs.coin.user;
 
