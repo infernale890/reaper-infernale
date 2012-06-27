@@ -67,7 +67,6 @@ void SubmitShare(Share& w, uint8_t* scratchbuf)
 		}
 		std::string str = VectorToHexString(w.data);
 		std::string ret = curl->TestWork(server,str);
-		std::cout << ">>" << ret; 
 		Json::Value root;
 		Json::Reader reader;
 		bool parse_success = reader.parse(ret, root);
