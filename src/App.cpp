@@ -42,8 +42,9 @@ SHARETEST_VALUE scanhash_scrypt(uint8_t *pdata, uint8_t* scratchbuf, const uint8
 
 bool getwork_now = false;
 bool dont_check_shares = false;
-void SubmitShare(Curl& curl, Share& w, uint8_t* scratchbuf)
+void SubmitShare(Share& w, uint8_t* scratchbuf)
 {
+	Curl *curl = NULL;
 	if (w.data.size()%128 != 0)
 	{
 		std::cout << "SubmitShare: Size of share is " << w.data.size() << ", should be a multiple of 128" << std::endl;
@@ -65,7 +66,8 @@ void SubmitShare(Curl& curl, Share& w, uint8_t* scratchbuf)
 				shares_hwvalid++;
 		}
 		std::string str = VectorToHexString(w.data);
-		std::string ret = curl.TestWork(server,str);
+		std::string ret = curl->TestWork(server,str);
+		std::cout << ">>" << ret; 
 		Json::Value root;
 		Json::Reader reader;
 		bool parse_success = reader.parse(ret, root);
@@ -132,8 +134,6 @@ bool sharethread_active;
 void* ShareThread(void* param)
 {
 	std::cout << "Share thread started" << std::endl;
-	Curl* pcurl;
-	uint32_t tiimm=0;
 	uint32_t currentserverid = 0;
 	std::vector<uint8_t> btcpadding(48,0);
 	btcpadding[3] = 0x80;
@@ -141,18 +141,17 @@ void* ShareThread(void* param)
 	btcpadding[45] = 0x02;
 
 	uint8_t scratchbuf[131072];
-
+	Share s;
 	while(!shutdown_now)
 	{
 		sharethread_active = true;
-		Wait_ms(50);
+		Wait_ms(100);
 #ifndef CPU_MINING_ONLY
 		foreachgpu()
 		{
 			sharethread_active = true;
 			if (!it->shares_available)
 				continue;
-			Share s;
 			pthread_mutex_lock(&it->share_mutex);
 			if (it->shares.empty())
 			{
@@ -169,11 +168,7 @@ void* ShareThread(void* param)
 			{
 				if (s.data.size() == 80)
 					s.data.insert(s.data.end(),btcpadding.begin(),btcpadding.end());
-			    tiimm = ticker();
-				SubmitShare(*pcurl, s,scratchbuf);
-				tiimm = ticker()-tiimm;
-				if (tiimm > 5000)
-					std::cout << "Share submit took " << tiimm/1000.0 << " s!  " << std::endl;
+				SubmitShare(s,scratchbuf);
 			}
 		}
 #endif
@@ -182,7 +177,6 @@ void* ShareThread(void* param)
 			sharethread_active = true;
 			if (!it->shares_available)
 				continue;
-			Share s;
 			pthread_mutex_lock(&it->share_mutex);
 			if (it->shares.empty())
 			{
@@ -198,11 +192,7 @@ void* ShareThread(void* param)
 			{
 				if (s.data.size() == 80)
 					s.data.insert(s.data.end(),btcpadding.begin(),btcpadding.end());
-				tiimm = ticker();
-				SubmitShare(*pcurl, s,scratchbuf);
-				tiimm = ticker()-tiimm;
-				if (tiimm > 5000)
-					std::cout << "Share submit took " << tiimm/1000.0 << " s!  " << std::endl;
+				SubmitShare(s,scratchbuf);
 			}
 		}
 	}
