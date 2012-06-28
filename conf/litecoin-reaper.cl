@@ -1,7 +1,11 @@
-#define rotl(x,y) rotate(x,y)	
-#define Ch(x,y,z)  bitselect(z,y,x)
+#define rotl(x,y) rotate(x,y)
+#define Ch(x,y,z) bitselect(z,y,x)
 #define Maj(x,y,z) Ch((x^z),y,z)
 
+uint4 EndianSwap4(uint4 n)
+{
+	return rotl(n&0x00FF00FF,24U)|rotl(n&0xFF00FF00,8U);
+}
 
 
 #define Tr2(x)		(rotl(x, 30U) ^ rotl(x, 19U) ^ rotl(x, 10U))
@@ -555,7 +559,7 @@ void shittify(uint4 B[8])
 	
 #pragma unroll
 	for(uint i=0; i<8; ++i)
-		B[i] = ((uint4)(rotl(tmp[i]&0x00FF00FF,24U)|rotl(tmp[i]&0xFF00FF00,8U)));
+		B[i] = EndianSwap4(tmp[i]); 
 }
 
 void unshittify(uint4 B[8])
@@ -574,19 +578,19 @@ void unshittify(uint4 B[8])
 	
 #pragma unroll
 	for(uint i=0; i<8; ++i)
-		B[i] = ((uint4)(rotl(tmp[i]&0x00FF00FF,24U)|rotl(tmp[i]&0xFF00FF00,8U)));
+		B[i] = EndianSwap4(tmp[i]); 
 }
 
 void salsa(uint4 B[8])
 {
 	uint4 w[4];
-
+	uint i = 0;
 #pragma unroll
-	for(uint i=0; i<4; ++i)
+	for(; i<4; ++i)
 		w[i] = (B[i]^=B[i+4]);
 
 #pragma unroll
-	for(uint i=0; i<4; ++i)
+	for(;i;i--)
 	{
 		w[0] ^= rotl(w[3]     +w[2]     , 7U);
 		w[1] ^= rotl(w[0]     +w[3]     , 9U);
@@ -599,11 +603,11 @@ void salsa(uint4 B[8])
 	}
 
 #pragma unroll
-	for(uint i=0; i<4; ++i)
+	for( i=0; i<4; ++i)
 		w[i] = (B[i+4]^=(B[i]+=w[i]));
 
 #pragma unroll
-	for(uint i=0; i<4; ++i)
+	for(;i;i--)
 	{
 		w[0] ^= rotl(w[3]     +w[2]     , 7U);
 		w[1] ^= rotl(w[0]     +w[3]     , 9U);
@@ -616,7 +620,7 @@ void salsa(uint4 B[8])
 	}
 
 #pragma unroll
-	for(uint i=0; i<4; ++i)
+	for( i=0; i<4; ++i)
 		B[i+4] += w[i];
 }
 
@@ -629,33 +633,33 @@ void scrypt_core(uint4 X[8], __global uint4*restrict lookup)
 	const uint zSIZE = 8;
 	const uint ySIZE = (1024/LOOKUP_GAP+(1024%LOOKUP_GAP>0));
 	const uint xSIZE = CONCURRENT_THREADS;
-	uint x = get_global_id(0)%xSIZE,z,i,y;
+	uint x = get_global_id(0)%xSIZE;
 
-	for(y=0; y<1024/LOOKUP_GAP; ++y)
+	for(uint y=0; y<1024/LOOKUP_GAP; ++y)
 	{
 #pragma unroll
-		for(z=0; z<8; ++z) //zsize
+		for(uint z=0; z<zSIZE; ++z)
 			lookup[CO] = X[z];
-
-		for(i=0; i<LOOKUP_GAP; ++i) 
+		for(uint i=0; i<LOOKUP_GAP; ++i) 
 			salsa(X);
 	}
 #if (LOOKUP_GAP != 1) && (LOOKUP_GAP != 2) && (LOOKUP_GAP != 4) && (LOOKUP_GAP != 8)
 	{
-		for(z=0; z<8; ++z)
+		uint y = (1024/LOOKUP_GAP);
+#pragma 
+		for(uint z=0; z<zSIZE; ++z)
 			lookup[CO] = X[z];
-
-		for(i=0; i<1024%LOOKUP_GAP; ++i)
+		for(uint i=0; i<1024%LOOKUP_GAP; ++i)
 			salsa(X); 
 	}
 #endif
-	for (i=0; i<1024; ++i) 
+	for (uint i=0; i<1024; ++i) 
 	{
 		uint4 V[8];
 		uint j = X[7].x & 0x3FF;
-		y = (j/LOOKUP_GAP);
+		uint y = (j/LOOKUP_GAP);
 #pragma unroll
-		for(z=0; z<8; ++z)
+		for(uint z=0; z<zSIZE; ++z)
 			V[z] = lookup[CO];
 
 #if (LOOKUP_GAP == 1)
@@ -664,12 +668,12 @@ void scrypt_core(uint4 X[8], __global uint4*restrict lookup)
 			salsa(V);
 #else
 		uint val = j%LOOKUP_GAP;
-		for (z=0; z<val; ++z) 
+		for (uint z=0; z<val; ++z) 
 			salsa(V);
 #endif
 
 #pragma unroll
-		for(z=0; z<8; ++z)
+		for(uint z=0; z<zSIZE; ++z)
 			X[z] ^= V[z];
 		salsa(X);
 	}
